@@ -1,27 +1,35 @@
 // Node.js + Express での Google OAuth 実装
 
 import express from'express';
+import session from 'express-session';
 import axios from 'axios';
 import crypto from 'crypto';
+import cors from 'cors'
+import 'dotenv/config'
+
 const app = express();
+
+app.use(cors(),session({
+  secret: 'your-secret',
+  resave: false,
+  saveUninitialized: true
+}));
 
 // 環境変数
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
 const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 const REDIRECT_URI = 'http://localhost:3000/auth/google/callback';
 
-// セッション管理用（実際はRedisなど使用）
-const sessions = new Map();
 
 // Google認証開始
 app.get('/auth/google', (req, res) => {
+    console.log(GOOGLE_CLIENT_ID,'   ',GOOGLE_CLIENT_SECRET);
   // CSRF対策用のstate生成
   const state = crypto.randomBytes(32).toString('hex');
-  
   // stateをセッションに保存
-  sessions.set(req.sessionID, { state });
+  req.session.state = state;
   
-  const authURL = new URL('https://accounts.google.com/oauth2/v2/auth');
+  const authURL = new URL('https://accounts.google.com/o/oauth2/v2/auth');
   authURL.searchParams.set('client_id', GOOGLE_CLIENT_ID);
   authURL.searchParams.set('redirect_uri', REDIRECT_URI);
   authURL.searchParams.set('scope', 'openid email profile');
@@ -37,8 +45,7 @@ app.get('/auth/google/callback', async (req, res) => {
     const { code, state } = req.query;
     
     // state検証（CSRF対策）
-    const session = sessions.get(req.sessionID);
-    if (!session || session.state !== state) {
+    if (!req.session.state || req.session.state !== state) {
       return res.status(400).send('Invalid state parameter');
     }
     
@@ -63,15 +70,13 @@ app.get('/auth/google/callback', async (req, res) => {
     const userInfo = userResponse.data;
     
     // セッションにユーザー情報保存
-    sessions.set(req.sessionID, {
-      user: {
-        id: userInfo.id,
-        email: userInfo.email,
-        name: userInfo.name,
-        picture: userInfo.picture
-      },
-      accessToken: access_token
-    });
+    req.session.user = {
+      id: userInfo.id,
+      email: userInfo.email,
+      name: userInfo.name,
+      picture: userInfo.picture
+    };
+    req.session.accessToken = access_token;
     
     // ダッシュボードにリダイレクト
     res.redirect('/dashboard');
@@ -84,11 +89,10 @@ app.get('/auth/google/callback', async (req, res) => {
 
 // ログイン確認ミドルウェア
 const requireAuth = (req, res, next) => {
-  const session = sessions.get(req.sessionID);
-  if (!session || !session.user) {
+  if (!req.session.user) {
     return res.redirect('/auth/google');
   }
-  req.user = session.user;
+  req.user = req.session.user;
   next();
 };
 
@@ -102,7 +106,7 @@ app.get('/dashboard', requireAuth, (req, res) => {
 
 // ログアウト
 app.get('/logout', (req, res) => {
-  sessions.delete(req.sessionID);
+  req.session.destroy();
   res.redirect('/');
 });
 
