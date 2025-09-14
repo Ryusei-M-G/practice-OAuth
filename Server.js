@@ -9,7 +9,10 @@ import 'dotenv/config'
 
 const app = express();
 
-app.use(cors(),session({
+app.use(cors({
+  origin: 'http://localhost:5173',
+  credentials: true
+}),session({
   secret: 'your-secret',
   resave: false,
   saveUninitialized: true
@@ -23,7 +26,6 @@ const REDIRECT_URI = 'http://localhost:3000/auth/google/callback';
 
 // Google認証開始
 app.get('/auth/google', (req, res) => {
-    console.log(GOOGLE_CLIENT_ID,'   ',GOOGLE_CLIENT_SECRET);
   // CSRF対策用のstate生成
   const state = crypto.randomBytes(32).toString('hex');
   // stateをセッションに保存
@@ -44,7 +46,7 @@ app.get('/auth/google/callback', async (req, res) => {
   try {
     const { code, state } = req.query;
     
-    // state検証（CSRF対策）
+    // state検証
     if (!req.session.state || req.session.state !== state) {
       return res.status(400).send('Invalid state parameter');
     }
@@ -78,8 +80,8 @@ app.get('/auth/google/callback', async (req, res) => {
     };
     req.session.accessToken = access_token;
     
-    // ダッシュボードにリダイレクト
-    res.redirect('/dashboard');
+    // フロントエンドにリダイレクト
+    res.redirect('http://localhost:5173');
     
   } catch (error) {
     console.error('OAuth error:', error.response?.data || error.message);
