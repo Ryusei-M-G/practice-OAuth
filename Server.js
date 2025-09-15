@@ -7,6 +7,7 @@ import jwt from 'jsonwebtoken';
 import 'dotenv/config'
 
 import VerifyToken from './VerifiyToken.js';
+import { upsertUser } from './DatabaseContoller.js';
 
 const app = express();
 
@@ -59,7 +60,34 @@ app.get('/auth/google/callback', async (req, res) => {
 
     const userInfo = verification.user;
     console.log(userInfo);
-    //後でJWTで認証情報を渡すようにする
+    const savedUser = await upsertUser(userInfo);
+
+    // セッションにユーザー情報を保存
+    req.session.user = {
+      id: savedUser.id,
+      google_id: savedUser.google_id,
+      email: savedUser.email,
+      name: savedUser.name
+    };
+    req.session.isAuthenticated = true;
+
+    // クッキーでユーザー情報を送信
+    res.cookie('user_info', JSON.stringify({
+      id: savedUser.id,
+      email: savedUser.email,
+      name: savedUser.name
+    }), {
+      maxAge: 3600000, // 1時間
+      httpOnly: false, // フロントエンドから読み取り可能
+      secure: false // 開発環境用
+    });
+
+    res.cookie('authenticated', 'true', {
+      maxAge: 3600000,
+      httpOnly: false,
+      secure: false
+    });
+
     res.redirect('http://localhost:5173');
 
   } catch (error) {
